@@ -1,7 +1,7 @@
 {
     "api_base_url": "https://api.siliconflow.cn/v1",
     "api_key": "",
-    "hotkey": "alt+p",
+    "hotkey": "Ctrl+Alt+V",
     "max_record_duration": 60,
     "silence_threshold": 500,
     "silence_duration": 2.0,
