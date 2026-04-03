@@ -192,7 +192,7 @@ python main.py
 ## 开发
 
 ```bash
-git clone https://github.com/your-username/voice-to-text.git
+git clone https://github.com/conm599/VoiceKey.git
 cd voice-to-text
 pip install -r requirements.txt
 python main.py
