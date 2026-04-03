@@ -87,6 +87,7 @@ python main.py
 1. 注册 [SiliconFlow](https://siliconflow.cn/) 账号
 2. 获取 API Key
 3. 在设置中填入 API Key
+4. 目前模型免费
 
 **优点**：
 
