@@ -12,16 +12,17 @@
 - **中文输出**：支持简体/繁体中文转换
 - **音频文件转换**：支持上传音频文件批量转文字
 - **隐私保护**：本地模式无需网络，数据不上传
+- **星火大模型对话**：集成星火大模型 API，润色输出
 
 ## 截图
 
 ### 应用图标
 
-![FunAudioLLM](https://tup-34x.pages.dev/FunAudioLLM.png)
+!\[FunAudioLLM]\(<https://tup-34x.pages.dev/FunAudioLLM.png> null)
 
 ### 设置界面
 
-![设置界面](https://tup-34x.pages.dev/htyu.png)
+!\[设置界面]\(<https://tup-34x.pages.dev/htyu.png> null)
 
 ## 安装
 
@@ -77,6 +78,7 @@ python main.py
 - **中文输出**：简体中文 / 繁体中文
 - **热键配置**：自定义快捷键
 - **录音设置**：静音阈值、采样率等
+- **星火大模型**：API 配置和对话管理
 
 ## 识别模式
 
@@ -87,7 +89,6 @@ python main.py
 1. 注册 [SiliconFlow](https://siliconflow.cn/) 账号
 2. 获取 API Key
 3. 在设置中填入 API Key
-4. 目前模型免费
 
 **优点**：
 
@@ -117,6 +118,35 @@ python main.py
 | Base  | \~150MB | \~1GB | 快  | 推荐  |
 | Small | \~500MB | \~2GB | 中等 | 较高  |
 
+## 星火大模型对话
+
+### 功能特性
+
+- **多轮对话**：支持连续对话，上下文理解
+- **会话管理**：创建、切换、删除对话会话
+- **流式输出**：实时显示模型回复
+- **Token 管理**：自动管理对话长度，防止超出限制
+
+### 配置方法
+
+1. 获取星火大模型 API 密钥
+2. 在设置中填入 API URL 和 API Password
+3. 点击"测试连接"确认配置正确
+
+### 使用方法
+
+1. GUI选择"星火对话"
+2. 在对话窗口中输入问题
+3. 点击"发送"或按 `Ctrl+Enter` 发送消息
+4. 模型会实时回复，支持连续对话
+
+### 应用场景
+
+- **文本润色**：优化语音识别结果，使文本更流畅自然
+- **内容扩展**：基于识别结果进行内容扩展和丰富
+- **语法修正**：自动修正识别结果中的语法问题
+- **多轮交互**：通过对话形式调整和完善文本内容
+
 ## 项目结构
 
 ```
@@ -129,10 +159,13 @@ python main.py
 │   ├── __init__.py
 │   ├── app.py                 # 主程序
 │   ├── config.json            # 配置文件
+│   ├── chat_history/          # 对话历史存储
 │   └── modules/
 │       ├── __init__.py
 │       ├── api_client.py      # 云端 API 客户端
 │       ├── audio_recorder.py  # 音频录制模块
+│       ├── chat.py            # 星火大模型对话
+│       ├── chat_window.py     # 对话窗口
 │       ├── config.py          # 配置管理
 │       ├── floating_window.py # 悬浮窗模块
 │       ├── gui.py             # 设置界面
@@ -158,6 +191,8 @@ python main.py
 | `sample_rate`         | int    | 16000        | 采样率                 |
 | `max_record_duration` | int    | 60           | 最大录音时长(秒)           |
 | `input_mode`          | string | "paste"      | 输入模式                |
+| `spark_api_url`       | string | ""           | 星火大模型 API URL       |
+| `spark_api_password`  | string | ""           | 星火大模型 API Password  |
 
 ## 测试文件
 
@@ -189,11 +224,17 @@ python main.py
 - 程序会自动使用 HuggingFace 镜像源
 - 可手动下载模型到 `models/` 目录
 
+### 星火大模型连接失败
+
+- 检查 API URL 和 Password 是否正确
+- 检查网络连接
+- 确认 API 服务是否可用
+
 ## 开发
 
 ```bash
 git clone https://github.com/conm599/VoiceKey.git
-cd voice-to-text
+cd VoiceKey
 pip install -r requirements.txt
 python main.py
 ```
@@ -208,19 +249,19 @@ python main.py
 
 本项目使用了以下开源库：
 
-| 库名 | 许可证 | 来源 |
-|------|--------|------|
-| sounddevice | MIT | <https://github.com/spatialaudio/python-sounddevice> |
-| numpy | BSD-3-Clause | <https://github.com/numpy/numpy> |
-| scipy | BSD-3-Clause | <https://github.com/scipy/scipy> |
-| pynput | LGPL-3.0 | <https://github.com/moses-palmer/pynput> |
-| pyperclip | BSD-3-Clause | <https://github.com/asweigart/pyperclip> |
-| pyautogui | BSD-3-Clause | <https://github.com/asweigart/pyautogui> |
-| requests | Apache-2.0 | <https://github.com/psf/requests> |
-| Pillow | PIL Software License | <https://github.com/python-pillow/Pillow> |
-| pystray | LGPL-3.0 | <https://github.com/moses-palmer/pystray> |
-| faster-whisper | MIT | <https://github.com/guillaumekln/faster-whisper> |
-| zhconv | MIT（代码）+ GPLv2+（转换表） | <https://github.com/gumblex/zhconv> |
+| 库名             | 许可证                  | 来源                                                   |
+| -------------- | -------------------- | ---------------------------------------------------- |
+| sounddevice    | MIT                  | <https://github.com/spatialaudio/python-sounddevice> |
+| numpy          | BSD-3-Clause         | <https://github.com/numpy/numpy>                     |
+| scipy          | BSD-3-Clause         | <https://github.com/scipy/scipy>                     |
+| pynput         | LGPL-3.0             | <https://github.com/moses-palmer/pynput>             |
+| pyperclip      | BSD-3-Clause         | <https://github.com/asweigart/pyperclip>             |
+| pyautogui      | BSD-3-Clause         | <https://github.com/asweigart/pyautogui>             |
+| requests       | Apache-2.0           | <https://github.com/psf/requests>                    |
+| Pillow         | PIL Software License | <https://github.com/python-pillow/Pillow>            |
+| pystray        | LGPL-3.0             | <https://github.com/moses-palmer/pystray>            |
+| faster-whisper | MIT                  | <https://github.com/guillaumekln/faster-whisper>     |
+| zhconv         | MIT（代码）+ GPLv2+（转换表） | <https://github.com/gumblex/zhconv>                  |
 
 以上库的许可证文件可在各自的 GitHub 仓库中找到。本项目在使用这些库时遵循其各自的许可证条款。
 
@@ -234,4 +275,5 @@ python main.py
 - [OpenAI Whisper](https://github.com/openai/whisper) - 原始 Whisper 模型
 - [SiliconFlow](https://siliconflow.cn/) - 云端 API 服务
 - [SenseVoice](https://github.com/FunAudioLLM/SenseVoice) - 语音识别模型
+- [星火大模型](https://xinghuo.xfyun.cn/) - 智能对话能力
 
