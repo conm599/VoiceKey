@@ -8,6 +8,7 @@ class TextInput:
     def __init__(self, mode="paste"):
         self.mode = mode
         self.keyboard = Controller()
+        self._stream_buffer = ""
     
     def set_mode(self, mode: str):
         self.mode = mode
@@ -27,6 +28,20 @@ class TextInput:
             return True
         except Exception:
             return False
+    
+    def input_text_stream(self, chunk: str) -> bool:
+        try:
+            self.keyboard.type(chunk)
+            self._stream_buffer += chunk
+            return True
+        except Exception:
+            return False
+    
+    def reset_stream_buffer(self):
+        self._stream_buffer = ""
+    
+    def get_stream_buffer(self) -> str:
+        return self._stream_buffer
     
     def input_text(self, text: str) -> bool:
         if self.mode == "direct":

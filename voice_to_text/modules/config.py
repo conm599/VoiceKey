@@ -25,6 +25,12 @@ class ConfigData:
     device: str = "cpu"
     compute_type: str = "int8"
     cpu_threads: int = 4
+    enable_llm_polish: bool = False
+    spark_api_url: str = "https://spark-api-open.xf-yun.com/v1/chat/completions"
+    spark_api_password: str = "qlrIxUwJjpEoAkNCZTMd:XQFxYOheZEilftwxbHbt"
+    spark_model: str = "lite"
+    enable_stream_output: bool = True
+    polish_mode: str = "correct"
 
 
 class Config:

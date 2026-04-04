@@ -5,8 +5,10 @@ import threading
 import os
 import pyperclip
 from voice_to_text.modules.config import Config
-from voice_to_text.modules.api_client import SiliconFlowAPI
+from voice_to_text.modules.api_client import SiliconFlowAPI, SparkAPI
 from voice_to_text.modules.local_whisper import LocalWhisperManager, MODELS_INFO, get_available_devices, get_compute_type_options
+from voice_to_text.modules.chat_window import ChatWindow
+from voice_to_text.modules.chat import SparkChatAPI
 
 AUDIO_FORMATS = [
     ("音频文件", "*.mp3 *.wav *.m4a *.flac *.ogg *.aac *.wma *.webm"),
@@ -71,6 +73,7 @@ class SettingsWindow:
         self.create_local_model_section()
         self.create_chinese_mode_section()
         self.create_cloud_api_section()
+        self.create_llm_polish_section()
         self.create_hotkey_section()
         self.create_input_mode_section()
         self.create_audio_settings_section()
@@ -216,9 +219,136 @@ class SettingsWindow:
         self.test_button = ttk.Button(self.cloud_frame, text="测试连接", command=self.test_api_connection)
         self.test_button.grid(row=2, column=0, columnspan=2, pady=10)
         
+    def create_llm_polish_section(self):
+        self.llm_polish_frame = ttk.LabelFrame(self.main_frame, text="大模型润色", padding="10")
+        self.llm_polish_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=5)
+        self.llm_polish_frame.columnconfigure(1, weight=1)
+        
+        self.enable_llm_polish_var = tk.BooleanVar(value=False)
+        self.enable_llm_polish_check = ttk.Checkbutton(
+            self.llm_polish_frame, text="启用大模型润色 (识别后自动修正错别字和常识错误)",
+            variable=self.enable_llm_polish_var
+        )
+        self.enable_llm_polish_check.grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=2)
+        
+        ttk.Label(self.llm_polish_frame, text="API Password:").grid(row=1, column=0, sticky=tk.W, pady=2)
+        self.spark_api_password_entry = ttk.Entry(self.llm_polish_frame, width=40, show="*")
+        self.spark_api_password_entry.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=2, padx=5)
+        
+        self.show_spark_key_var = tk.BooleanVar(value=False)
+        self.show_spark_key_check = ttk.Checkbutton(
+            self.llm_polish_frame, text="显示 API Password", variable=self.show_spark_key_var,
+            command=self.toggle_spark_key_visibility
+        )
+        self.show_spark_key_check.grid(row=2, column=0, columnspan=2, pady=2)
+        
+        ttk.Label(self.llm_polish_frame, text="润色模式:").grid(row=3, column=0, sticky=tk.W, pady=2)
+        self.polish_mode_var = tk.StringVar(value="correct")
+        polish_mode_frame = ttk.Frame(self.llm_polish_frame)
+        polish_mode_frame.grid(row=3, column=1, sticky=tk.W, pady=2, padx=5)
+        
+        ttk.Radiobutton(
+            polish_mode_frame, text="修正模式", variable=self.polish_mode_var, value="correct"
+        ).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Radiobutton(
+            polish_mode_frame, text="润色模式", variable=self.polish_mode_var, value="embellish"
+        ).pack(side=tk.LEFT)
+        
+        mode_hint_label = ttk.Label(
+            self.llm_polish_frame,
+            text="修正模式: 仅修正明显错误 | 润色模式: 优化语句表达 (温度0.2)",
+            foreground="gray"
+        )
+        mode_hint_label.grid(row=4, column=0, columnspan=2, sticky=tk.W, pady=2)
+        
+        self.test_spark_button = ttk.Button(self.llm_polish_frame, text="测试星火API连接", command=self.test_spark_api_connection)
+        self.test_spark_button.grid(row=5, column=0, columnspan=2, pady=5)
+        
+        self.enable_stream_output_var = tk.BooleanVar(value=True)
+        self.enable_stream_output_check = ttk.Checkbutton(
+            self.llm_polish_frame, text="流式输出 (直接输入模式下实时显示润色结果)",
+            variable=self.enable_stream_output_var
+        )
+        self.enable_stream_output_check.grid(row=6, column=0, columnspan=2, sticky=tk.W, pady=2)
+        
+        stream_hint_label = ttk.Label(
+            self.llm_polish_frame,
+            text="注: 粘贴模式不支持流式输出，仅直接输入模式可用",
+            foreground="gray"
+        )
+        stream_hint_label.grid(row=7, column=0, columnspan=2, sticky=tk.W, pady=2)
+        
+        chat_frame = ttk.Frame(self.llm_polish_frame)
+        chat_frame.grid(row=8, column=0, columnspan=2, pady=10)
+        
+        self.open_chat_button = ttk.Button(chat_frame, text="打开对话窗口", command=self.open_chat_window)
+        self.open_chat_button.pack(side=tk.LEFT, padx=(0, 10))
+        
+        chat_hint_label = ttk.Label(chat_frame, text="与星火大模型进行对话交流", foreground="gray")
+        chat_hint_label.pack(side=tk.LEFT)
+        
+        self.chat_window = None
+        self.chat_api = None
+        
+    def toggle_spark_key_visibility(self):
+        if self.show_spark_key_var.get():
+            self.spark_api_password_entry.config(show="")
+        else:
+            self.spark_api_password_entry.config(show="*")
+            
+    def test_spark_api_connection(self):
+        api_password = self.spark_api_password_entry.get().strip()
+        
+        if not api_password:
+            messagebox.showwarning("警告", "请输入 API Password")
+            return
+        
+        self.test_spark_button.config(state="disabled")
+        self.status_var.set("正在测试星火API连接...")
+        
+        def do_test():
+            spark_api = SparkAPI(
+                api_url="https://spark-api-open.xf-yun.com/v1/chat/completions",
+                api_password=api_password
+            )
+            success, message = spark_api.test_connection()
+            self.window.after(0, lambda: self.on_test_spark_complete(success, message))
+        
+        threading.Thread(target=do_test, daemon=True).start()
+    
+    def on_test_spark_complete(self, success: bool, message: str):
+        self.test_spark_button.config(state="normal")
+        self.status_var.set(message)
+        
+        if success:
+            messagebox.showinfo("成功", message)
+        else:
+            messagebox.showerror("失败", message)
+    
+    def open_chat_window(self):
+        api_password = self.spark_api_password_entry.get().strip()
+        
+        if not api_password:
+            messagebox.showwarning("警告", "请先输入 API Password")
+            return
+        
+        if self.chat_api is None:
+            self.chat_api = SparkChatAPI(
+                api_url="https://spark-api-open.xf-yun.com/v1/chat/completions",
+                api_password=api_password,
+                model="lite"
+            )
+        else:
+            self.chat_api.api_password = api_password
+        
+        if self.chat_window is None:
+            self.chat_window = ChatWindow(self.window, self.chat_api)
+        
+        self.chat_window.show()
+        
     def create_hotkey_section(self):
         hotkey_frame = ttk.LabelFrame(self.main_frame, text="热键配置", padding="10")
-        hotkey_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=5)
+        hotkey_frame.grid(row=5, column=0, sticky=(tk.W, tk.E), pady=5)
         hotkey_frame.columnconfigure(1, weight=1)
         
         ttk.Label(hotkey_frame, text="当前热键:").grid(row=0, column=0, sticky=tk.W, pady=2)
@@ -233,7 +363,7 @@ class SettingsWindow:
         
     def create_input_mode_section(self):
         mode_frame = ttk.LabelFrame(self.main_frame, text="输入模式", padding="10")
-        mode_frame.grid(row=5, column=0, sticky=(tk.W, tk.E), pady=5)
+        mode_frame.grid(row=6, column=0, sticky=(tk.W, tk.E), pady=5)
         
         self.input_mode_var = tk.StringVar(value="paste")
         
@@ -249,7 +379,7 @@ class SettingsWindow:
     
     def create_audio_settings_section(self):
         audio_frame = ttk.LabelFrame(self.main_frame, text="录音设置", padding="10")
-        audio_frame.grid(row=6, column=0, sticky=(tk.W, tk.E), pady=5)
+        audio_frame.grid(row=7, column=0, sticky=(tk.W, tk.E), pady=5)
         audio_frame.columnconfigure(1, weight=1)
         
         ttk.Label(audio_frame, text="静音检测阈值:").grid(row=0, column=0, sticky=tk.W, pady=2)
@@ -322,7 +452,7 @@ class SettingsWindow:
     
     def create_file_upload_section(self):
         file_frame = ttk.LabelFrame(self.main_frame, text="音频文件转文字", padding="10")
-        file_frame.grid(row=7, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        file_frame.grid(row=8, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
         file_frame.columnconfigure(0, weight=1)
         file_frame.rowconfigure(3, weight=1)
         
@@ -373,7 +503,7 @@ class SettingsWindow:
         
     def create_buttons(self):
         button_frame = ttk.Frame(self.main_frame)
-        button_frame.grid(row=8, column=0, pady=10)
+        button_frame.grid(row=9, column=0, pady=10)
         
         self.save_button = ttk.Button(button_frame, text="保存", command=self.save_config, width=12)
         self.save_button.grid(row=0, column=0, padx=5)
@@ -640,6 +770,13 @@ class SettingsWindow:
         
         self.sample_rate_var.set(self.config.get("sample_rate", 16000))
         self.max_duration_var.set(self.config.get("max_record_duration", 60))
+        
+        self.enable_llm_polish_var.set(self.config.get("enable_llm_polish", False))
+        self.spark_api_password_entry.delete(0, tk.END)
+        self.spark_api_password_entry.insert(0, self.config.get("spark_api_password", ""))
+        
+        self.enable_stream_output_var.set(self.config.get("enable_stream_output", True))
+        self.polish_mode_var.set(self.config.get("polish_mode", "correct"))
     
     def save_config(self):
         try:
@@ -665,6 +802,10 @@ class SettingsWindow:
                 "silence_duration": self.silence_duration_var.get(),
                 "sample_rate": self.sample_rate_var.get(),
                 "max_record_duration": self.max_duration_var.get(),
+                "enable_llm_polish": self.enable_llm_polish_var.get(),
+                "spark_api_password": self.spark_api_password_entry.get().strip(),
+                "enable_stream_output": self.enable_stream_output_var.get(),
+                "polish_mode": self.polish_mode_var.get(),
             }
             
             self.config.update(config_dict)
@@ -780,6 +921,23 @@ class SettingsWindow:
                         api_key=self.config.get("api_key", "")
                     )
                     result = api_client.transcribe(self.selected_audio_file, "auto")
+                
+                self.window.after(0, lambda: self.file_progress_var.set(60))
+                
+                if result.get("success", False):
+                    text = result.get("text", "")
+                    enable_polish = self.config.get("enable_llm_polish", False)
+                    spark_api_password = self.config.get("spark_api_password", "")
+                    
+                    if enable_polish and spark_api_password and text:
+                        self.window.after(0, lambda: self.file_progress_label.config(text="大模型润色中..."))
+                        spark_api = SparkAPI(
+                            api_url="https://spark-api-open.xf-yun.com/v1/chat/completions",
+                            api_password=spark_api_password
+                        )
+                        polish_result = spark_api.polish_text(text)
+                        if polish_result.get("success", False):
+                            result["text"] = polish_result.get("text", text)
                 
                 self.window.after(0, lambda: self.file_progress_var.set(90))
                 

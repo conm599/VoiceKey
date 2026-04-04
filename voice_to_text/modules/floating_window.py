@@ -104,6 +104,19 @@ class FloatingWindow:
                 fill='#ff0000',
                 outline='#ff0000'
             )
+        elif self._current_status == "polishing":
+            self.canvas.create_oval(
+                cx - base_radius - 3, cy - base_radius - 3,
+                cx + base_radius + 3, cy + base_radius + 3,
+                fill='#9C27B0',
+                outline='#9C27B0'
+            )
+            self.canvas.create_oval(
+                cx - base_radius, cy - base_radius,
+                cx + base_radius, cy + base_radius,
+                fill='#ff0000',
+                outline='#ff0000'
+            )
         elif self._current_status == "completed":
             self.canvas.create_oval(
                 cx - base_radius - 3, cy - base_radius - 3,
