@@ -4,7 +4,7 @@ import os
 from typing import Optional
 
 from voice_to_text.modules.config import Config
-from voice_to_text.modules.api_client import SiliconFlowAPI
+from voice_to_text.modules.api_client import SiliconFlowAPI, SparkAPI
 from voice_to_text.modules.local_whisper import LocalWhisperManager
 from voice_to_text.modules.audio_recorder import AudioRecorder
 from voice_to_text.modules.hotkey_manager import HotkeyManager
@@ -32,6 +32,7 @@ class VoiceToTextApp:
         self.current_state = "idle"
         
         self.api_client = None
+        self.spark_api_client = None
         self.whisper_manager = None
         self.audio_recorder: Optional[AudioRecorder] = None
         self.hotkey_manager: Optional[HotkeyManager] = None
@@ -57,6 +58,30 @@ class VoiceToTextApp:
         self.hotkey_manager = HotkeyManager()
         
         self._init_recognition_engine()
+        self._init_spark_api()
+        
+    def _init_spark_api(self):
+        enable_polish = self.config.get("enable_llm_polish", False)
+        if enable_polish:
+            spark_api_url = self.config.get("spark_api_url", "https://spark-api-open.xf-yun.com/v1/chat/completions")
+            spark_api_password = self.config.get("spark_api_password", "")
+            spark_model = self.config.get("spark_model", "lite")
+            polish_mode = self.config.get("polish_mode", "correct")
+            
+            if spark_api_password:
+                self.spark_api_client = SparkAPI(
+                    api_url=spark_api_url,
+                    api_password=spark_api_password,
+                    model=spark_model,
+                    polish_mode=polish_mode
+                )
+                print(f"[DEBUG] 星火API客户端初始化成功, 模式: {polish_mode}")
+            else:
+                self.spark_api_client = None
+                print("[DEBUG] 星火API Password 未配置")
+        else:
+            self.spark_api_client = None
+            print("[DEBUG] 大模型润色功能未启用")
         
     def _init_recognition_engine(self):
         use_local = self.config.get("use_local_whisper", False)
@@ -288,20 +313,24 @@ class VoiceToTextApp:
         threading.Thread(target=do_process, daemon=True).start()
         
     def _on_transcribe_complete(self, result: dict, audio_file_path: str):
-        self.is_processing = False
-        self.current_state = "idle"
-        self.update_tray_icon("idle")
-        
         if result.get("success", False):
             text = result.get("text", "")
             if text:
-                self.input_text(text)
-                if self.floating_window:
-                    self.floating_window.show_result(text)
-                self.update_floating_window_status("completed")
+                enable_polish = self.config.get("enable_llm_polish", False)
+                if enable_polish and self.spark_api_client:
+                    self.update_floating_window_status("polishing")
+                    self._polish_and_output(text, audio_file_path)
+                else:
+                    self._finalize_transcribe(text, audio_file_path)
             else:
+                self.is_processing = False
+                self.current_state = "idle"
+                self.update_tray_icon("idle")
                 self.show_error("未识别到文字")
         else:
+            self.is_processing = False
+            self.current_state = "idle"
+            self.update_tray_icon("idle")
             error = result.get("error", "未知错误")
             self.show_error(error)
             
@@ -310,6 +339,78 @@ class VoiceToTextApp:
                 os.remove(audio_file_path)
         except Exception:
             pass
+    
+    def _polish_and_output(self, text: str, audio_file_path: str):
+        print(f"[DEBUG] _polish_and_output 开始, input_mode={self.config.get('input_mode')}, enable_stream={self.config.get('enable_stream_output')}")
+        input_mode = self.config.get("input_mode", "paste")
+        enable_stream = self.config.get("enable_stream_output", True)
+        
+        use_stream = (input_mode == "direct" and enable_stream)
+        print(f"[DEBUG] use_stream={use_stream}")
+        
+        if use_stream:
+            def do_polish_stream():
+                print(f"[DEBUG] do_polish_stream 开始执行, text长度={len(text)}")
+                full_text = [""]
+                
+                def on_chunk(chunk: str):
+                    full_text[0] += chunk
+                    print(f"[DEBUG] on_chunk 收到chunk: {chunk[:20]}...")
+                    if self.text_input:
+                        self.text_input.input_text_stream(chunk)
+                
+                print(f"[DEBUG] 调用 polish_text_stream...")
+                result = self.spark_api_client.polish_text_stream(text, on_chunk)
+                print(f"[DEBUG] polish_text_stream 返回, success={result.get('success')}, text长度={len(result.get('text', ''))}")
+                self.root.after(0, lambda: self._on_polish_stream_complete(result, text, audio_file_path, full_text[0]))
+            
+            threading.Thread(target=do_polish_stream, daemon=True).start()
+        else:
+            def do_polish():
+                print(f"[DEBUG] do_polish 开始执行")
+                result = self.spark_api_client.polish_text(text)
+                print(f"[DEBUG] polish_text 返回, success={result.get('success')}")
+                self.root.after(0, lambda: self._on_polish_complete(result, text, audio_file_path))
+            
+            threading.Thread(target=do_polish, daemon=True).start()
+    
+    def _on_polish_stream_complete(self, result: dict, original_text: str, audio_file_path: str, streamed_text: str):
+        if result.get("success", False):
+            polished_text = streamed_text if streamed_text else result.get("text", original_text)
+            print(f"[DEBUG] 流式润色完成: {original_text[:30]}... -> {polished_text[:30]}...")
+        else:
+            error = result.get("error", "润色失败")
+            print(f"[DEBUG] 流式润色失败: {error}, 使用原始文本")
+            if self.text_input and original_text:
+                self.text_input.input_with_fallback(original_text)
+            polished_text = original_text
+        
+        self._finalize_transcribe(polished_text, audio_file_path, skip_input=bool(streamed_text))
+    
+    def _on_polish_complete(self, result: dict, original_text: str, audio_file_path: str):
+        if result.get("success", False):
+            polished_text = result.get("text", original_text)
+            print(f"[DEBUG] 润色完成: {original_text[:50]}... -> {polished_text[:50]}...")
+        else:
+            error = result.get("error", "润色失败")
+            print(f"[DEBUG] 润色失败: {error}, 使用原始文本")
+            polished_text = original_text
+        
+        self._finalize_transcribe(polished_text, audio_file_path)
+    
+    def _finalize_transcribe(self, text: str, audio_file_path: str, skip_input: bool = False):
+        self.is_processing = False
+        self.current_state = "idle"
+        self.update_tray_icon("idle")
+        
+        if text:
+            if not skip_input:
+                self.input_text(text)
+            if self.floating_window:
+                self.floating_window.show_result(text)
+            self.update_floating_window_status("completed")
+        else:
+            self.show_error("未识别到文字")
         
     def input_text(self, text: str):
         if not text:

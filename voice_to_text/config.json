@@ -1,7 +1,7 @@
 {
     "api_base_url": "https://api.siliconflow.cn/v1",
     "api_key": "",
-    "hotkey": "Ctrl+Alt+V",
+    "hotkey": "alt+p",
     "max_record_duration": 60,
     "silence_threshold": 500,
     "silence_duration": 2.0,
@@ -10,11 +10,17 @@
     "floating_window_y": 0,
     "language": "auto",
     "input_mode": "direct",
-    "use_local_whisper": true,
+    "use_local_whisper": false,
     "local_whisper_url": "http://127.0.0.1:7860",
     "local_model": "base",
     "chinese_mode": "simplified",
     "device": "cpu",
     "compute_type": "int8",
-    "cpu_threads": 4
+    "cpu_threads": 4,
+    "enable_llm_polish": true,
+    "spark_api_url": "https://spark-api-open.xf-yun.com/v1/chat/completions",
+    "spark_api_password": "",
+    "spark_model": "lite",
+    "enable_stream_output": true,
+    "polish_mode": "correct"
 }
