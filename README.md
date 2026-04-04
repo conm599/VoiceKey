@@ -18,11 +18,11 @@
 
 ### 应用图标
 
-!\[FunAudioLLM]\(<https://tup-34x.pages.dev/FunAudioLLM.png> null)
+![FunAudioLLM](https://tup-34x.pages.dev/FunAudioLLM.png)
 
 ### 设置界面
 
-!\[设置界面]\(<https://tup-34x.pages.dev/htyu.png> null)
+![设置界面](https://tup-34x.pages.dev/htyu.png)
 
 ## 安装
 
