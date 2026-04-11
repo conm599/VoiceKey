@@ -70,6 +70,7 @@ class SettingsWindow:
         self.main_frame.columnconfigure(0, weight=1)
         
         self.create_recognition_mode_section()
+        self.create_streaming_section()
         self.create_local_model_section()
         self.create_chinese_mode_section()
         self.create_cloud_api_section()
@@ -100,9 +101,41 @@ class SettingsWindow:
             command=self.on_recognition_mode_change
         ).grid(row=1, column=0, sticky=tk.W, pady=2)
         
+    def create_streaming_section(self):
+        streaming_frame = ttk.LabelFrame(self.main_frame, text="流式识别设置", padding="10")
+        streaming_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=5)
+        
+        self.enable_streaming_recognition_var = tk.BooleanVar(value=False)
+        self.enable_streaming_recognition_check = ttk.Checkbutton(
+            streaming_frame, text="启用流式识别 (实时识别语音片段)",
+            variable=self.enable_streaming_recognition_var
+        )
+        self.enable_streaming_recognition_check.grid(row=0, column=0, sticky=tk.W, pady=2)
+        
+        chunk_frame = ttk.Frame(streaming_frame)
+        chunk_frame.grid(row=1, column=0, sticky=tk.W, pady=2)
+        
+        ttk.Label(chunk_frame, text="识别片段时长 (秒):").pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.streaming_chunk_duration_var = tk.DoubleVar(value=3.0)
+        self.streaming_chunk_duration_spinbox = ttk.Spinbox(
+            chunk_frame, from_=1.0, to=10.0, increment=0.5,
+            textvariable=self.streaming_chunk_duration_var, width=8
+        )
+        self.streaming_chunk_duration_spinbox.pack(side=tk.LEFT, padx=5)
+        
+        ttk.Label(chunk_frame, text="(推荐: 2-5秒)", foreground="gray").pack(side=tk.LEFT)
+        
+        streaming_hint_label = ttk.Label(
+            streaming_frame,
+            text="注: 流式识别仅在直接输入模式下可用，需要持续的网络连接或本地模型",
+            foreground="gray"
+        )
+        streaming_hint_label.grid(row=2, column=0, sticky=tk.W, pady=2)
+        
     def create_local_model_section(self):
         self.local_frame = ttk.LabelFrame(self.main_frame, text="本地模型设置", padding="10")
-        self.local_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=5)
+        self.local_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=5)
         self.local_frame.columnconfigure(1, weight=1)
         
         ttk.Label(self.local_frame, text="选择模型:").grid(row=0, column=0, sticky=tk.W, pady=2)
@@ -179,7 +212,7 @@ class SettingsWindow:
         
     def create_chinese_mode_section(self):
         chinese_frame = ttk.LabelFrame(self.main_frame, text="中文输出模式", padding="10")
-        chinese_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=5)
+        chinese_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=5)
         
         self.chinese_mode_var = tk.StringVar(value="simplified")
         
@@ -202,7 +235,7 @@ class SettingsWindow:
         
     def create_cloud_api_section(self):
         self.cloud_frame = ttk.LabelFrame(self.main_frame, text="云端 API 设置", padding="10")
-        self.cloud_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=5)
+        self.cloud_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=5)
         self.cloud_frame.columnconfigure(1, weight=1)
         
         ttk.Label(self.cloud_frame, text="API Key:").grid(row=0, column=0, sticky=tk.W, pady=2)
@@ -221,7 +254,7 @@ class SettingsWindow:
         
     def create_llm_polish_section(self):
         self.llm_polish_frame = ttk.LabelFrame(self.main_frame, text="大模型润色", padding="10")
-        self.llm_polish_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=5)
+        self.llm_polish_frame.grid(row=5, column=0, sticky=(tk.W, tk.E), pady=5)
         self.llm_polish_frame.columnconfigure(1, weight=1)
         
         self.enable_llm_polish_var = tk.BooleanVar(value=False)
@@ -348,7 +381,7 @@ class SettingsWindow:
         
     def create_hotkey_section(self):
         hotkey_frame = ttk.LabelFrame(self.main_frame, text="热键配置", padding="10")
-        hotkey_frame.grid(row=5, column=0, sticky=(tk.W, tk.E), pady=5)
+        hotkey_frame.grid(row=6, column=0, sticky=(tk.W, tk.E), pady=5)
         hotkey_frame.columnconfigure(1, weight=1)
         
         ttk.Label(hotkey_frame, text="当前热键:").grid(row=0, column=0, sticky=tk.W, pady=2)
@@ -363,7 +396,7 @@ class SettingsWindow:
         
     def create_input_mode_section(self):
         mode_frame = ttk.LabelFrame(self.main_frame, text="输入模式", padding="10")
-        mode_frame.grid(row=6, column=0, sticky=(tk.W, tk.E), pady=5)
+        mode_frame.grid(row=7, column=0, sticky=(tk.W, tk.E), pady=5)
         
         self.input_mode_var = tk.StringVar(value="paste")
         
@@ -379,7 +412,7 @@ class SettingsWindow:
     
     def create_audio_settings_section(self):
         audio_frame = ttk.LabelFrame(self.main_frame, text="录音设置", padding="10")
-        audio_frame.grid(row=7, column=0, sticky=(tk.W, tk.E), pady=5)
+        audio_frame.grid(row=8, column=0, sticky=(tk.W, tk.E), pady=5)
         audio_frame.columnconfigure(1, weight=1)
         
         ttk.Label(audio_frame, text="静音检测阈值:").grid(row=0, column=0, sticky=tk.W, pady=2)
@@ -452,7 +485,7 @@ class SettingsWindow:
     
     def create_file_upload_section(self):
         file_frame = ttk.LabelFrame(self.main_frame, text="音频文件转文字", padding="10")
-        file_frame.grid(row=8, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        file_frame.grid(row=9, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
         file_frame.columnconfigure(0, weight=1)
         file_frame.rowconfigure(3, weight=1)
         
@@ -503,7 +536,7 @@ class SettingsWindow:
         
     def create_buttons(self):
         button_frame = ttk.Frame(self.main_frame)
-        button_frame.grid(row=9, column=0, pady=10)
+        button_frame.grid(row=10, column=0, pady=10)
         
         self.save_button = ttk.Button(button_frame, text="保存", command=self.save_config, width=12)
         self.save_button.grid(row=0, column=0, padx=5)
@@ -750,6 +783,9 @@ class SettingsWindow:
         self.recognition_mode_var.set("local" if use_local else "cloud")
         self.on_recognition_mode_change()
         
+        self.enable_streaming_recognition_var.set(self.config.get("enable_streaming_recognition", False))
+        self.streaming_chunk_duration_var.set(self.config.get("streaming_chunk_duration", 3.0))
+        
         self.model_var.set(self.config.get("local_model", "base"))
         self.on_model_select()
         
@@ -806,6 +842,8 @@ class SettingsWindow:
                 "spark_api_password": self.spark_api_password_entry.get().strip(),
                 "enable_stream_output": self.enable_stream_output_var.get(),
                 "polish_mode": self.polish_mode_var.get(),
+                "enable_streaming_recognition": self.enable_streaming_recognition_var.get(),
+                "streaming_chunk_duration": self.streaming_chunk_duration_var.get(),
             }
             
             self.config.update(config_dict)

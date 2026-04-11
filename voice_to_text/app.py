@@ -30,6 +30,10 @@ class VoiceToTextApp:
         self.is_recording = False
         self.is_processing = False
         self.current_state = "idle"
+        self.is_streaming_recognition = False
+        self.streaming_text = ""
+        self.streaming_chunk_lock = threading.Lock()
+        self.streaming_processing = False
         
         self.api_client = None
         self.spark_api_client = None
@@ -187,6 +191,7 @@ class VoiceToTextApp:
         if self.audio_recorder:
             self.audio_recorder.on_volume_change = self.on_volume_change
             self.audio_recorder.on_silence_detected = self.on_silence_detected
+            self.audio_recorder.on_audio_chunk = self.on_audio_chunk
             
     def _create_tray(self):
         print("[DEBUG] 创建托盘图标...")
@@ -215,6 +220,9 @@ class VoiceToTextApp:
             
         self.is_recording = True
         self.current_state = "recording"
+        self.is_streaming_recognition = self.config.get("enable_streaming_recognition", False)
+        self.streaming_text = ""
+        self.streaming_processing = False
         
         self.show_floating_window()
         self.update_floating_window_status("recording")
@@ -223,13 +231,15 @@ class VoiceToTextApp:
         silence_threshold = self.config.get("silence_threshold", 500)
         silence_duration = self.config.get("silence_duration", 2.0)
         max_duration = self.config.get("max_record_duration", 60)
+        chunk_duration = self.config.get("streaming_chunk_duration", 3.0)
         
         if self.audio_recorder:
             try:
                 self.audio_recorder.start_recording(
                     silence_threshold=float(silence_threshold),
                     silence_duration=silence_duration,
-                    max_duration=float(max_duration)
+                    max_duration=float(max_duration),
+                    chunk_duration=chunk_duration
                 )
             except Exception as e:
                 self.is_recording = False
@@ -290,7 +300,96 @@ class VoiceToTextApp:
     def on_volume_change(self, volume: float):
         if self.floating_window and self.is_recording:
             self.root.after(0, lambda: self.floating_window.update_volume(volume))
+    
+    def on_audio_chunk(self, audio_chunk):
+        if not self.is_streaming_recognition or not self.is_recording:
+            return
             
+        with self.streaming_chunk_lock:
+            if self.streaming_processing:
+                return
+            self.streaming_processing = True
+        
+        def process_chunk():
+            use_local = self.config.get("use_local_whisper", False)
+            language = self.config.get("language", "auto")
+            
+            if use_local:
+                if self.whisper_manager and self.whisper_manager.is_model_loaded():
+                    result = self.whisper_manager.transcribe_chunk(audio_chunk, language)
+                else:
+                    result = {"success": False, "text": "", "error": "本地模型未加载"}
+            else:
+                if self.api_client:
+                    result = self.api_client.transcribe_chunk(audio_chunk, language)
+                else:
+                    result = {"success": False, "text": "", "error": "API 未配置"}
+            
+            self.root.after(0, lambda: self._on_stream_chunk_complete(result))
+        
+        threading.Thread(target=process_chunk, daemon=True).start()
+    
+    def _on_stream_chunk_complete(self, result: dict):
+        with self.streaming_chunk_lock:
+            self.streaming_processing = False
+        
+        if result.get("success", False):
+            text = result.get("text", "")
+            if text:
+                self.streaming_text += text
+                if self.text_input and self.config.get("input_mode", "paste") == "direct":
+                    self.text_input.input_text_stream(text)
+                if self.floating_window:
+                    self.floating_window.show_result(self.streaming_text)
+    
+    def stop_recording(self):
+        if not self.is_recording:
+            return
+            
+        self.is_recording = False
+        self.is_processing = True
+        self.current_state = "processing"
+        
+        if self.is_streaming_recognition:
+            if self.streaming_text:
+                self._finalize_transcribe(self.streaming_text, "", skip_input=False)
+                audio_file_path = ""
+                if self.audio_recorder:
+                    try:
+                        audio_file_path = self.audio_recorder.stop_recording()
+                    except Exception as e:
+                        pass
+                try:
+                    if audio_file_path and os.path.exists(audio_file_path):
+                        os.remove(audio_file_path)
+                except Exception:
+                    pass
+                return
+            else:
+                self.is_streaming_recognition = False
+        
+        self.update_floating_window_status("recognizing")
+        self.update_tray_icon("processing")
+        
+        audio_file_path = ""
+        if self.audio_recorder:
+            try:
+                audio_file_path = self.audio_recorder.stop_recording()
+            except Exception as e:
+                self.is_processing = False
+                self.current_state = "idle"
+                self.show_error(f"停止录音失败: {str(e)}")
+                self.hide_floating_window()
+                return
+                
+        if audio_file_path:
+            self.process_audio(audio_file_path)
+        else:
+            self.is_processing = False
+            self.current_state = "idle"
+            self.show_error("没有录制到音频数据")
+            self.hide_floating_window()
+    
     def process_audio(self, audio_file_path: str):
         use_local = self.config.get("use_local_whisper", False)
         
@@ -311,7 +410,7 @@ class VoiceToTextApp:
             self.root.after(0, lambda: self._on_transcribe_complete(result, audio_file_path))
             
         threading.Thread(target=do_process, daemon=True).start()
-        
+    
     def _on_transcribe_complete(self, result: dict, audio_file_path: str):
         if result.get("success", False):
             text = result.get("text", "")

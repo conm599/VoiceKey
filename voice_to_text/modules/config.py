@@ -31,6 +31,8 @@ class ConfigData:
     spark_model: str = "lite"
     enable_stream_output: bool = True
     polish_mode: str = "correct"
+    enable_streaming_recognition: bool = False
+    streaming_chunk_duration: float = 3.0
 
 
 class Config:

@@ -4,6 +4,7 @@ import threading
 import logging
 import time
 import re
+from datetime import datetime
 from typing import Optional, Callable, Dict, Tuple, List
 from pathlib import Path
 
@@ -702,6 +703,64 @@ class LocalWhisperManager:
         except Exception as e:
             logger.error(f"识别过程发生错误: {str(e)}", exc_info=True)
             result["error"] = f"识别失败: {str(e)}"
+        
+        return result
+    
+    def transcribe_chunk(self, audio_array: np.ndarray, language: str = "auto") -> Dict:
+        result = {
+            "success": False,
+            "text": "",
+            "error": ""
+        }
+        
+        with self._model_lock:
+            if self.model is None:
+                result["error"] = "模型未加载"
+                return result
+            
+            model_ref = self.model
+        
+        try:
+            import tempfile
+            from scipy.io import wavfile
+            import os
+            
+            temp_dir = tempfile.gettempdir()
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            temp_filepath = os.path.join(temp_dir, f"chunk_{timestamp}.wav")
+            
+            audio_int16 = (audio_array * 32767).astype(np.int16)
+            wavfile.write(temp_filepath, 16000, audio_int16)
+            
+            lang = None if language == "auto" else language
+            segments, info = model_ref.transcribe(
+                temp_filepath, 
+                language=lang,
+                beam_size=3,
+                vad_filter=True,
+                vad_parameters=dict(min_silence_duration_ms=200)
+            )
+            
+            text = "".join([segment.text for segment in segments])
+            logger.info(f"流式识别原始文本: {text}")
+            
+            if text.strip():
+                converted_text = convert_chinese(text, self.chinese_mode)
+                logger.info(f"流式识别转换后文本: {converted_text}")
+                result["text"] = converted_text.strip()
+            else:
+                result["text"] = ""
+            
+            result["success"] = True
+            
+            try:
+                os.remove(temp_filepath)
+            except:
+                pass
+            
+        except Exception as e:
+            logger.error(f"流式识别过程发生错误: {str(e)}", exc_info=True)
+            result["error"] = f"流式识别失败: {str(e)}"
         
         return result
     

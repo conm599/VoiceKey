@@ -14,6 +14,7 @@ class AudioRecorder:
         self.channels = channels
         self.on_volume_change: Optional[Callable[[float], None]] = None
         self.on_silence_detected: Optional[Callable[[], None]] = None
+        self.on_audio_chunk: Optional[Callable[[np.ndarray], None]] = None
         
         self._is_recording = False
         self._audio_data = []
@@ -29,19 +30,28 @@ class AudioRecorder:
         import tempfile
         self._temp_dir = tempfile.gettempdir()
         
+        self._chunk_buffer = []
+        self._chunk_size = 0
+        self._chunk_duration = 3.0
+        self._last_chunk_time = 0
+        
         os.makedirs(self._temp_dir, exist_ok=True)
     
-    def start_recording(self, silence_threshold: float = 500, silence_duration: float = 2.0, max_duration: float = 60.0):
+    def start_recording(self, silence_threshold: float = 500, silence_duration: float = 2.0, max_duration: float = 60.0, chunk_duration: float = 3.0):
         if self._is_recording:
             return
         
         self._silence_threshold = silence_threshold
         self._silence_duration = silence_duration
         self._max_duration = max_duration
+        self._chunk_duration = chunk_duration
         self._audio_data = []
+        self._chunk_buffer = []
+        self._chunk_size = 0
         self._is_recording = True
         self._silence_start_time = None
         self._recording_start_time = time.time()
+        self._last_chunk_time = self._recording_start_time
         self._stop_event.clear()
         
         self._stream = sd.InputStream(
@@ -60,6 +70,8 @@ class AudioRecorder:
             return
         
         self._audio_data.append(indata.copy())
+        self._chunk_buffer.append(indata.copy())
+        self._chunk_size += frames
         
         rms = np.sqrt(np.mean(indata**2)) * 32767
         self._current_volume = min(rms / 32767.0, 1.0)
@@ -77,6 +89,14 @@ class AudioRecorder:
                 self._trigger_silence_callback()
         else:
             self._silence_start_time = None
+        
+        if current_time - self._last_chunk_time >= self._chunk_duration and self.on_audio_chunk:
+            if self._chunk_buffer:
+                chunk_array = np.concatenate(self._chunk_buffer, axis=0)
+                self.on_audio_chunk(chunk_array)
+                self._chunk_buffer = []
+                self._chunk_size = 0
+                self._last_chunk_time = current_time
     
     def _trigger_silence_callback(self):
         if self.on_silence_detected:
@@ -102,6 +122,12 @@ class AudioRecorder:
         
         if self._volume_callback_thread:
             self._volume_callback_thread.join(timeout=1.0)
+        
+        if self._chunk_buffer and self.on_audio_chunk:
+            chunk_array = np.concatenate(self._chunk_buffer, axis=0)
+            self.on_audio_chunk(chunk_array)
+            self._chunk_buffer = []
+            self._chunk_size = 0
         
         if not self._audio_data:
             return ""

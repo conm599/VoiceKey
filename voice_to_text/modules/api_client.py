@@ -85,6 +85,78 @@ class SiliconFlowAPI:
 
         return result
 
+    def transcribe_chunk(self, audio_array, language: str = "auto") -> Dict:
+        result = {
+            "success": False,
+            "text": "",
+            "error": ""
+        }
+
+        try:
+            import tempfile
+            from scipy.io import wavfile
+            import os
+            from datetime import datetime
+            
+            temp_dir = tempfile.gettempdir()
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            temp_filepath = os.path.join(temp_dir, f"cloud_chunk_{timestamp}.wav")
+            
+            audio_int16 = (audio_array * 32767).astype(np.int16)
+            wavfile.write(temp_filepath, 16000, audio_int16)
+
+            url = f"{self.api_base_url}/audio/transcriptions"
+
+            with open(temp_filepath, 'rb') as audio_file:
+                files = {
+                    'file': (os.path.basename(temp_filepath), audio_file, 'audio/wav')
+                }
+                data = {
+                    'model': self.model,
+                    'language': language
+                }
+
+                response = requests.post(
+                    url,
+                    headers=self._get_headers(),
+                    files=files,
+                    data=data,
+                    timeout=self.timeout
+                )
+
+            try:
+                os.remove(temp_filepath)
+            except:
+                pass
+
+            if response.status_code == 200:
+                response_data = response.json()
+                result["success"] = True
+                result["text"] = response_data.get("text", "")
+            elif response.status_code == 401:
+                result["error"] = "认证失败: API Key 无效或已过期"
+            elif response.status_code == 429:
+                result["error"] = "请求过于频繁,请稍后再试"
+            elif response.status_code >= 500:
+                result["error"] = f"服务器错误: {response.status_code}"
+            else:
+                try:
+                    error_data = response.json()
+                    result["error"] = error_data.get("error", {}).get("message", f"请求失败: {response.status_code}")
+                except Exception:
+                    result["error"] = f"请求失败: {response.status_code}"
+
+        except requests.exceptions.Timeout:
+            result["error"] = "请求超时,请检查网络连接"
+        except requests.exceptions.ConnectionError:
+            result["error"] = "网络连接失败,请检查网络设置"
+        except requests.exceptions.RequestException as e:
+            result["error"] = f"请求异常: {str(e)}"
+        except Exception as e:
+            result["error"] = f"未知错误: {str(e)}"
+
+        return result
+
     def test_connection(self) -> Tuple[bool, str]:
         url = f"{self.api_base_url}/models"
 
